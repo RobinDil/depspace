@@ -6,6 +6,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 
+import bftsmart.tom.util.TOMUtil;
 import pvss.InvalidVSSScheme;
 import pvss.PVSSEngine;
 import pvss.PublicInfo;
@@ -127,9 +128,7 @@ public class ConfidentialityScheme {
     	}
     }
 
-    @SuppressWarnings("static-access")
-	public Object[] fingerprint(ProtectionVector protectionVector, Object[] fields)
-    throws InvalidVSSScheme {
+	public static Object[] fingerprint(ProtectionVector protectionVector, Object[] fields) {
 
     	if(protectionVector.getLength() != fields.length) {
     		throw new RuntimeException("Invalid field type specification");
@@ -146,8 +145,7 @@ public class ConfidentialityScheme {
                         fingerprint[i] = fields[i];
                     }break;
                     case ProtectionVector.CO:{
-                        fingerprint[i] = engine.hash(engine.getPublicInfo(),
-                                fields[i].toString().getBytes()).toString();
+                        fingerprint[i] = digest(fields[i].toString().getBytes());
                     }break;
                     case ProtectionVector.PR:{
                         fingerprint[i] = PRIVATE;
@@ -160,6 +158,10 @@ public class ConfidentialityScheme {
         }
         
         return fingerprint;
+    }
+
+    private static BigInteger digest(byte[] data) {
+        return new BigInteger(TOMUtil.computeHash(data));
     }
     
     private byte[] tupleToBytes(Object[] fields) {

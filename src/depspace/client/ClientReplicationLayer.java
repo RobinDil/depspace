@@ -1,11 +1,19 @@
 package depspace.client;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import bftsmart.tom.core.messages.TOMMessageType;
+import bftsmart.tom.util.TOMUtil;
+import confidential.client.ConfidentialServiceProxy;
+import confidential.client.Response;
+import depspace.confidentiality.ProtectionVector;
 import depspace.general.Context;
 import depspace.general.DepSpaceException;
 import depspace.general.DepSpaceOperation;
@@ -13,20 +21,23 @@ import depspace.general.DepSpaceProperties;
 import depspace.general.DepSpaceReply;
 import depspace.general.DepSpaceRequest;
 import depspace.general.DepTuple;
+import depspace.util.Payload;
+import vss.facade.SecretSharingException;
 
 
 public class ClientReplicationLayer implements DepSpaceClientLayer {
+	public static final String PRIVATE = "PR";
 
 	// Counter for request sequence numbers
 	private final AtomicInteger sequenceNumber;
 
 	// BFT-SMaRt
-	private final DepSpaceServiceProxy service;
+	private final ConfidentialServiceProxy proxy;
 	
 	
-	public ClientReplicationLayer(DepSpaceServiceProxy service) {
+	public ClientReplicationLayer(ConfidentialServiceProxy proxy) {
 		this.sequenceNumber = new AtomicInteger();
-		this.service = service;
+		this.proxy = proxy;
 	}
 
 
@@ -35,6 +46,62 @@ public class ClientReplicationLayer implements DepSpaceClientLayer {
 	}
 	
 	private synchronized Object executeOperation(DepSpaceOperation operation, Object arg, Context ctx, TOMMessageType type) throws DepSpaceException {
+
+		Response response;
+
+		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			 ObjectOutputStream out = new ObjectOutputStream(bos)) {
+			int id = sequenceNumber.getAndIncrement();
+			out.writeInt(id);
+			out.write((byte)operation.ordinal());
+			ctx.serialize(out);
+
+			switch (operation) {
+				case OUT:
+				case RENEW:
+				case RDP:
+				case INP:
+				case RD:
+				case IN:
+				case SIGNED_RD:
+				case RDALL:
+				case INALL:
+				case CLEAN:
+					DepTuple tuple = (DepTuple)arg;
+					Object[] fields = tuple.getFields();
+					Object[] fingerprint = fingerprint(ctx.protectionVectors[0], fields);
+					DepTuple maskedTuple = new DepTuple(fingerprint, tuple.getC_rd(), tuple.getC_in(),
+							tuple.getExpirationTime(), tuple.getN_Matches());
+
+					response = proxy.invokeOrdered(bos.toByteArray(), serializedTuple);
+					break;
+				case CAS:
+				case REPLACE:
+					for(DepTuple tuple: (DepTuple[]) arg) {
+						chunk = tuple.serialize();
+						Payload.writeChunk(chunk, oos);
+					}
+					break;
+				case OUTALL:
+					@SuppressWarnings("unchecked")
+					List<DepTuple> tuples = (List<DepTuple>) arg;
+					oos.writeInt(tuples.size());
+					for(DepTuple tuple: tuples) {
+						chunk = tuple.serialize();
+						Payload.writeChunk(chunk, oos);
+					}
+					break;
+				case CREATE:
+				case DELETE:
+					oos.writeObject(arg);
+					break;
+				default:
+					System.err.println(DepSpaceRequest.class.getSimpleName() + ".serialize(): Unhandled operation type " + operation);
+			}
+		} catch (IOException | SecretSharingException e) {
+			throw new DepSpaceException("Failed to serialize request", e);
+		}
+
 		// Prepare request
 		DepSpaceRequest request = new DepSpaceRequest(sequenceNumber.getAndIncrement(), operation, arg, ctx);
 		byte[] requestBytes = request.serialize();
@@ -164,4 +231,51 @@ public class ClientReplicationLayer implements DepSpaceClientLayer {
 		executeOperation(DepSpaceOperation.CLEAN, proof, ctx);
 	}
 
+	private Object[] fingerprint(ProtectionVector protectionVector, Object[] fields) {
+
+		if(protectionVector.getLength() != fields.length) {
+			throw new RuntimeException("Invalid field type specification");
+		}
+
+		Object[] fingerprint = new Object[fields.length];
+
+		for(int i=0; i < protectionVector.getLength(); i++) {
+			if(DepTuple.WILDCARD.equals(fields[i])){
+				fingerprint[i] = DepTuple.WILDCARD;
+			}else{
+				switch(protectionVector.getType(i)){
+					case ProtectionVector.PU:{
+						fingerprint[i] = fields[i];
+					}break;
+					case ProtectionVector.CO:{
+						fingerprint[i] = digest(fields[i].toString().getBytes());
+					}break;
+					case ProtectionVector.PR:{
+						fingerprint[i] = PRIVATE;
+					}break;
+					default:{
+						throw new RuntimeException("Invalid field type specification");
+					}
+				}
+			}
+		}
+
+		return fingerprint;
+	}
+
+	private BigInteger digest(byte[] data) {
+		return new BigInteger(TOMUtil.computeHash(data));
+	}
+
+	private byte[] tupleToBytes(Object[] fields) {
+		ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
+
+		try{
+			new ObjectOutputStream(bos).writeObject(fields);
+
+			return bos.toByteArray();
+		}catch(Exception e){
+			throw new RuntimeException("cannot write tuple fields: "+e);
+		}
+	}
 }

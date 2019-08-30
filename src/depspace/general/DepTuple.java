@@ -1,20 +1,9 @@
 package depspace.general;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutput;
-import java.io.ObjectOutputStream;
-import java.math.BigInteger;
-import java.util.Arrays;
+import confidential.ConfidentialData;
 
-import pvss.InvalidVSSScheme;
-import pvss.PublicInfo;
-import pvss.PublishedShares;
-import pvss.Share;
+import java.io.*;
+import java.util.Arrays;
 
 /**
  * Replication layer for DepSpace clients. 
@@ -35,12 +24,9 @@ public class DepTuple implements Externalizable {
     // TODO comment
     private  int[] c_rd;
     private  int[] c_in;
-    
+
     // TODO comment
-    private PublishedShares publishedShares;
-    
-    // TODO comment
-    private Share share = null;
+    private ConfidentialData share = null;
     
     // The expiration time of this tuple
     // If "expirationTime = 0", tuple is not timed.
@@ -60,30 +46,33 @@ public class DepTuple implements Externalizable {
         this.c_rd = null;
         this.c_in = null;
         this.fields = null;
-        this.publishedShares = null;
         this.expirationTime = 0;
         this.n_matches = -1;
     }
-    
-    private DepTuple(Object[] fields, int[] c_rd, int[] c_in,
-            PublishedShares publishedShares) {
+
+    public DepTuple(Object[] fields, int[] c_rd, int[] c_in) {
         this.c_rd = c_rd;
         this.c_in = c_in;
         this.fields = fields;
-        this.publishedShares = publishedShares;
         this.expirationTime = 0;
         this.n_matches = -1;
     }
-    
-    private DepTuple(Object[] fields, int[] c_rd, int[] c_in,
-            PublishedShares publishedShares, Share share) {
+
+    public DepTuple(Object[] fields, int[] c_rd, int[] c_in, long expirationTime, int n_matches, ConfidentialData share) {
         this.c_rd = c_rd;
         this.c_in = c_in;
         this.fields = fields;
-        this.publishedShares = publishedShares;
         this.share = share;
-        this.expirationTime = 0;
-        this.n_matches = -1;
+        this.expirationTime = expirationTime;
+        this.n_matches = n_matches;
+    }
+
+    public DepTuple(Object[] fields, int[] c_rd, int[] c_in, long expirationTime, int n_matches) {
+        this.c_rd = c_rd;
+        this.c_in = c_in;
+        this.fields = fields;
+        this.expirationTime = expirationTime;
+        this.n_matches = n_matches;
     }
     
     /**
@@ -104,7 +93,7 @@ public class DepTuple implements Externalizable {
 	 *	 create methods for several kinds of tuples	  *
 	 **************************************************/
     
-    public static final DepTuple createTuple(Object... fields) {
+    /*public static final DepTuple createTuple(Object... fields) {
         return new DepTuple(fields,null,null,null);
     }
     
@@ -131,7 +120,7 @@ public class DepTuple implements Externalizable {
     // TimedTuple
     public static final DepTuple createTimedTuple(long expirationTime, Object... fields) {
     	return new DepTuple(fields, null, null, expirationTime);
-    }
+    }*/
     
     
     /**************************************************
@@ -139,14 +128,14 @@ public class DepTuple implements Externalizable {
 	 **************************************************/
     
     public final Object[] getFields() { return fields; }
-    public final PublishedShares getPublishedShares() { return publishedShares; }
-    public final Share getShare() { return share; }
+    //public final PublishedShares getPublishedShares() { return publishedShares; }
+    public final ConfidentialData getShare() { return share; }
     public int[] getC_rd() { return c_rd; }
     public int[] getC_in() { return c_in; }
     public long getExpirationTime() { return expirationTime; }
     public int getN_Matches() { return n_matches; }
     
-    public void setShare(Share share) { this.share = share; }
+    public void setShare(ConfidentialData share) { this.share = share; }
     public void setC_rd(int[] c_rd) { this.c_rd = c_rd; };
     public void setC_in(int[] c_in) { this.c_in = c_in; };
     public void setExpirationTime(long expirationTime) { this.expirationTime = expirationTime; }
@@ -160,8 +149,7 @@ public class DepTuple implements Externalizable {
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     	c_rd = (int[])in.readObject();
     	c_in = (int[])in.readObject();
-    	publishedShares = (PublishedShares)in.readObject();
-    	share = (Share)in.readObject();
+    	share.readExternal(in);
  
     	int tam = in.readInt();
     	if(tam < 0){
@@ -180,8 +168,8 @@ public class DepTuple implements Externalizable {
     public void writeExternal(ObjectOutput out) throws IOException{
         out.writeObject(c_rd);
         out.writeObject(c_in);
-        out.writeObject(publishedShares);
-        out.writeObject(share);
+        share = new ConfidentialData();
+        share.writeExternal(out);
         
         if(fields != null){
             //out.writeInt(1);
@@ -202,18 +190,6 @@ public class DepTuple implements Externalizable {
     /**************************************************
 	 *				  Business Methods				  *
 	 **************************************************/
-    
-    public void extractShare(int id, BigInteger secretKey, PublicInfo info, BigInteger[] publicKeys) {
-        if(publishedShares == null) {
-            System.err.println("Not a confidential tuple!");
-        } else {
-            try {
-                this.share = publishedShares.getShare(id,secretKey,info,publicKeys);
-            } catch (InvalidVSSScheme ex) {
-                ex.printStackTrace();
-            }
-        }
-    }
     
     public boolean canRd(int id) {
         if(c_rd == null) {
@@ -244,9 +220,9 @@ public class DepTuple implements Externalizable {
     public boolean equals(Object object) {
         if(!(object instanceof DepTuple)) return false;
         DepTuple other = (DepTuple) object;
-        if(publishedShares == null) return (other.publishedShares == null);
-        if(other.publishedShares == null) return false;
-        if(!publishedShares.equals(other.publishedShares)) return false; // <--- Does the PublishedShares class implement equals()? 
+        if(share == null) return (other.share == null);
+        if(other.share == null) return false;
+        if(!share.equals(other.share)) return false; // <--- Does the PublishedShares class implement equals()?
         // Shouldn't the 'share' attribute also be compared?
         // Shouldn't the 'expiration time' attribute also be compared?
         // Shouldn't the 'n_matches' attribute also be compared?
@@ -284,7 +260,7 @@ public class DepTuple implements Externalizable {
         } else {
             buff.append("all");
         }
-        buff.append("),confidential=").append(publishedShares != null).append("]");
+        buff.append("),confidential=").append(share != null).append("]");
         
         return buff.toString();
     }
@@ -375,8 +351,7 @@ public class DepTuple implements Externalizable {
 			}
 			oos.writeObject(c_rd);
 			oos.writeObject(c_in);
-			oos.writeObject(publishedShares);
-			oos.writeObject(share);
+			share.writeExternal(oos);
 			oos.writeLong(expirationTime);
 			oos.writeInt(n_matches);
 			oos.close();
@@ -431,8 +406,8 @@ public class DepTuple implements Externalizable {
 		}
     	this.c_rd = (int[]) ois.readObject();
     	this.c_in = (int[]) ois.readObject();
-    	this.publishedShares = (PublishedShares) ois.readObject();
-    	this.share = (Share) ois.readObject();
+    	this.share = new ConfidentialData();
+    	this.share.readExternal(ois);
     	this.expirationTime = ois.readLong();
     	this.n_matches = ois.readInt();
 		ois.close();

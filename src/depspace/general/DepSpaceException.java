@@ -22,6 +22,14 @@ public class DepSpaceException extends Exception {
     public DepSpaceException(String message) {
         super(message);
     }
+
+    /**
+     * Creates a new instance of DepSpaceException.
+     * @param message The message
+     */
+    public DepSpaceException(String message, Throwable cause) {
+        super(message, cause);
+    }
     
     
     /**
