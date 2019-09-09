@@ -1,15 +1,9 @@
 package depspace.server;
 
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
+import confidential.ConfidentialData;
+import depspace.general.*;
 
-import depspace.general.Context;
-import depspace.general.DepSpace;
-import depspace.general.DepSpaceException;
-import depspace.general.DepSpaceOperation;
-import depspace.general.DepTuple;
+import java.util.*;
 
 
 public class DepSpaceImplLayer extends DepSpaceServerLayer {
@@ -100,7 +94,45 @@ public class DepSpaceImplLayer extends DepSpaceServerLayer {
 		throw new UnsupportedOperationException("Not implemented at this layer");
 	}
 
-	
+	@Override
+	public void installSnapshot(TupleSpaceSnapshot state) {
+		try {
+			List<DepTuple> tuples = new ArrayList<>(state.getTuples().length);
+			DepTuple[] maskedTuples = state.getTuples();
+			ConfidentialData[] shares = state.getShares();
+
+			for (int i = 0; i < maskedTuples.length; i++) {
+				DepTuple tuple = maskedTuples[i];
+				tuple.setShare(shares[i]);
+				tuples.add(tuple);
+			}
+			impl.outAll(tuples, null);
+		} catch (DepSpaceException e) {
+			e.printStackTrace();
+		}
+	}
+
+	@Override
+	public TupleSpaceSnapshot getSnapshot() {
+		try {
+			Collection<DepTuple> tuples = impl.rdAll();
+			DepTuple[] maskedTuples = new DepTuple[tuples.size()];
+			ConfidentialData[] shares = new ConfidentialData[tuples.size()];
+
+			int i = 0;
+			for (DepTuple tuple : tuples) {
+				shares[i] = tuple.getShare();
+				maskedTuples[i] = tuple.getTupleWithoutShare();
+				i++;
+			}
+			return new TupleSpaceSnapshot(maskedTuples, shares);
+		} catch (DepSpaceException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
+
 	/***********************
 	 * BLOCKING OPERATIONS *
 	 ***********************/

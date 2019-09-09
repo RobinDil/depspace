@@ -1,5 +1,6 @@
 package depspace.policyenforcement;
 
+import depspace.server.TupleSpaceSnapshot;
 import groovy.lang.GroovyClassLoader;
 
 import java.util.Collection;
@@ -159,6 +160,16 @@ public class PolicyEnforcementLayer extends DepSpaceServerLayer {
 	public void clean(DepTuple proof, Context ctx) throws DepSpaceException {
 		checkPermission(DepSpaceOperation.CLEAN, ctx, proof);
 		upperLayer.clean(proof, ctx);
+	}
+
+	@Override
+	public void installSnapshot(TupleSpaceSnapshot state) {
+
+	}
+
+	@Override
+	public TupleSpaceSnapshot getSnapshot() {
+		return null;
 	}
 
 }

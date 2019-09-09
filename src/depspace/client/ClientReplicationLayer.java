@@ -1,12 +1,8 @@
 package depspace.client;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.math.BigInteger;
-import java.util.Collection;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import bftsmart.tom.core.messages.TOMMessageType;
@@ -47,7 +43,7 @@ public class ClientReplicationLayer implements DepSpaceClientLayer {
 	
 	private synchronized Object executeOperation(DepSpaceOperation operation, Object arg, Context ctx, TOMMessageType type) throws DepSpaceException {
 
-		Response response;
+		Response response = null;
 
 		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
 			 ObjectOutputStream out = new ObjectOutputStream(bos)) {
@@ -55,81 +51,126 @@ public class ClientReplicationLayer implements DepSpaceClientLayer {
 			out.writeInt(id);
 			out.write((byte)operation.ordinal());
 			ctx.serialize(out);
+			byte[] confidentialData = null;
 
 			switch (operation) {
 				case OUT:
-				case RENEW:
-				case RDP:
-				case INP:
-				case RD:
-				case IN:
-				case SIGNED_RD:
-				case RDALL:
-				case INALL:
-				case CLEAN:
 					DepTuple tuple = (DepTuple)arg;
 					Object[] fields = tuple.getFields();
 					Object[] fingerprint = fingerprint(ctx.protectionVectors[0], fields);
 					DepTuple maskedTuple = new DepTuple(fingerprint, tuple.getC_rd(), tuple.getC_in(),
 							tuple.getExpirationTime(), tuple.getN_Matches());
-
-					response = proxy.invokeOrdered(bos.toByteArray(), serializedTuple);
+					byte[] serializedMaskedTuple = maskedTuple.serialize();
+					out.writeInt(serializedMaskedTuple.length);
+					out.write(serializedMaskedTuple);
+					confidentialData = tupleToBytes(fields);
+					break;
+				case RDP:
+				case RD:
+				case RDALL:
+				case IN:
+				case INP:
+				case INALL:
+					tuple = (DepTuple)arg;
+					fingerprint = fingerprint(ctx.protectionVectors[0], tuple.getFields());
+					maskedTuple = new DepTuple(fingerprint, tuple.getC_rd(), tuple.getC_in(),
+							tuple.getExpirationTime(), tuple.getN_Matches());
+					serializedMaskedTuple = maskedTuple.serialize();
+					out.writeInt(serializedMaskedTuple.length);
+					out.write(serializedMaskedTuple);
 					break;
 				case CAS:
+					DepTuple[] tuples = (DepTuple[]) arg;
+					//writing template
+					tuple = tuples[0];
+					fingerprint = fingerprint(ctx.protectionVectors[0], tuple.getFields());
+					maskedTuple = new DepTuple(fingerprint, tuple.getC_rd(), tuple.getC_in(),
+							tuple.getExpirationTime(), tuple.getN_Matches());
+					serializedMaskedTuple = maskedTuple.serialize();
+					out.writeInt(serializedMaskedTuple.length);
+					out.write(serializedMaskedTuple);
+
+					//writing new tuple
+					tuple = tuples[1];
+					fingerprint = fingerprint(ctx.protectionVectors[1], tuple.getFields());
+					maskedTuple = new DepTuple(fingerprint, tuple.getC_rd(), tuple.getC_in(),
+							tuple.getExpirationTime(), tuple.getN_Matches());
+					serializedMaskedTuple = maskedTuple.serialize();
+					out.writeInt(serializedMaskedTuple.length);
+					out.write(serializedMaskedTuple);
+					confidentialData = tupleToBytes(tuple.getFields());
+					break;
+				case RENEW:
+				case SIGNED_RD:
+				case CLEAN:
 				case REPLACE:
-					for(DepTuple tuple: (DepTuple[]) arg) {
-						chunk = tuple.serialize();
-						Payload.writeChunk(chunk, oos);
-					}
-					break;
-				case OUTALL:
-					@SuppressWarnings("unchecked")
-					List<DepTuple> tuples = (List<DepTuple>) arg;
-					oos.writeInt(tuples.size());
-					for(DepTuple tuple: tuples) {
-						chunk = tuple.serialize();
-						Payload.writeChunk(chunk, oos);
-					}
-					break;
+					throw new UnsupportedOperationException();
 				case CREATE:
 				case DELETE:
-					oos.writeObject(arg);
+					out.writeObject(arg);
 					break;
 				default:
-					System.err.println(DepSpaceRequest.class.getSimpleName() + ".serialize(): Unhandled operation type " + operation);
+					System.err.println("Unhandled operation type " + operation);
 			}
+			out.flush();
+			bos.flush();
+			if (type == TOMMessageType.ORDERED_REQUEST)
+				response = confidentialData == null ? proxy.invokeOrdered(bos.toByteArray())
+						: proxy.invokeOrdered(bos.toByteArray(), confidentialData);
+			else if (type == TOMMessageType.UNORDERED_REQUEST)
+				response = confidentialData == null ? proxy.invokeUnordered(bos.toByteArray())
+						: proxy.invokeUnordered(bos.toByteArray(), confidentialData);
+			else
+				throw new DepSpaceException("Unknown TOMMessageType " + type);
 		} catch (IOException | SecretSharingException e) {
 			throw new DepSpaceException("Failed to serialize request", e);
 		}
 
-		// Prepare request
-		DepSpaceRequest request = new DepSpaceRequest(sequenceNumber.getAndIncrement(), operation, arg, ctx);
-		byte[] requestBytes = request.serialize();
-
-		// Invoke operation
-		byte[] replyBuffer = service.invoke(requestBytes, type);
-		
-		// Deserialize result
-		switch(request.operation) {
-		case OUT:
-		case OUTALL:
-		case CREATE:
-		case DELETE:
-		case CLEAN:
+		if (response == null)
 			return null;
-		default:
-			DepSpaceReply reply;
-			try {
-				reply = new DepSpaceReply(replyBuffer);
-			} catch(Exception e) {
-				e.printStackTrace();
-				throw new DepSpaceException("Error while deserializing reply");
+		try (ByteArrayInputStream bis = new ByteArrayInputStream(response.getPainData());
+			 ObjectInput in = new ObjectInputStream(bis)) {
+			DepSpaceOperation responseOperation = DepSpaceOperation.getOperation(in.read());
+			switch (responseOperation) {
+				case EXCEPTION:
+					throw (DepSpaceException)in.readObject();
+				case RDP:
+				case RD:
+				case INP:
+				case IN:
+					if (in.readBoolean()) {
+						Object[] fields = extractTuple(response.getConfidentialData()[0]);
+						byte[] serializedTuple = new byte[in.readInt()];
+						in.readFully(serializedTuple);
+						DepTuple tuple = new DepTuple(serializedTuple);
+						tuple.setFields(fields);
+						return tuple;
+					} else
+						return null;
+				case RDALL:
+				case INALL:
+					List<DepTuple> tuples;
+					if (in.readBoolean()) {
+						int nTuples = in.readInt();
+						tuples = new ArrayList<>(nTuples);
+						for (int i = 0; i < nTuples; i++) {
+							Object[] fields = extractTuple(response.getConfidentialData()[i]);
+							byte[] serializedTuple = new byte[in.readInt()];
+							in.readFully(serializedTuple);
+							DepTuple tuple = new DepTuple(serializedTuple);
+							tuple.setFields(fields);
+							tuples.add(tuple);
+						}
+					} else
+						tuples = new ArrayList<>();
+					return tuples;
+				default:
+					return null;
 			}
-			if(reply.operation == DepSpaceOperation.EXCEPTION) throw (DepSpaceException) reply.arg;
-			return reply.arg;
+		} catch (Exception e) {
+			throw new DepSpaceException("Failed to deserialize response", e);
 		}
 	}
-	
 	
 	/*************************************
 	 * DEPSPACE INTERFACE IMPLEMENTATION *
@@ -268,14 +309,29 @@ public class ClientReplicationLayer implements DepSpaceClientLayer {
 	}
 
 	private byte[] tupleToBytes(Object[] fields) {
-		ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
-
-		try{
-			new ObjectOutputStream(bos).writeObject(fields);
-
+		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		ObjectOutput out = new ObjectOutputStream(bos)) {
+			out.writeInt(fields.length);
+			for (Object field : fields) {
+				out.writeObject(field);
+			}
+			out.flush();
+			bos.flush();
 			return bos.toByteArray();
-		}catch(Exception e){
-			throw new RuntimeException("cannot write tuple fields: "+e);
+		} catch (IOException e) {
+			throw new RuntimeException("cannot write tuple fields: ", e);
+		}
+	}
+
+	private Object[] extractTuple(byte[] tupleBytes) throws Exception {
+		try (ByteArrayInputStream bis = new ByteArrayInputStream(tupleBytes);
+			 ObjectInput in = new ObjectInputStream(bis)) {
+			Object[] fields = new Object[in.readInt()];
+			for (int i = 0; i < fields.length; i++)
+				fields[i] = in.readObject();
+			return fields;
+		} catch(Exception e) {
+			throw new RuntimeException("cannot read tuple fields: ", e);
 		}
 	}
 }

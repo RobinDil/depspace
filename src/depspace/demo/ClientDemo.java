@@ -9,16 +9,17 @@
 
 package depspace.demo;
 
-import java.util.Collection;
-import java.util.Properties;
-import java.util.Scanner;
-
 import depspace.client.DepSpaceAccessor;
 import depspace.client.DepSpaceAdmin;
 import depspace.general.DepSpaceConfiguration;
 import depspace.general.DepSpaceException;
 import depspace.general.DepSpaceProperties;
 import depspace.general.DepTuple;
+import vss.facade.SecretSharingException;
+
+import java.util.Collection;
+import java.util.Properties;
+import java.util.Scanner;
 
 /**
  * 
@@ -101,7 +102,7 @@ public class ClientDemo {
 		// accessor.commitTransaction(transId);
 	}
 
-	public static void main(String[] args) throws DepSpaceException {
+	public static void main(String[] rgs) throws DepSpaceException {
 
 		int exec = 1;
 		boolean create = true;
@@ -114,16 +115,17 @@ public class ClientDemo {
 		Properties prop = DepSpaceProperties.createDefaultProperties(name);
 
 		// use confidentiality?
-		prop.put(DepSpaceProperties.DPS_CONFIDEALITY, "false");
+		prop.put(DepSpaceProperties.DPS_CONFIDEALITY, "true");
 
 		int clientID = 4;
 
 		// the DepSpace Accessor, who will access the DepSpace.
 		DepSpaceAccessor accessor = null;
+		DepSpaceAdmin depSpaceAdmin = new DepSpaceAdmin(clientID);
 		if (create) {
-			accessor = new DepSpaceAdmin(clientID).createSpace(prop);
+			accessor = depSpaceAdmin.createSpace(prop);
 		} else {
-			accessor = new DepSpaceAdmin(clientID).createAccessor(prop, create);
+			accessor = depSpaceAdmin.createAccessor(prop, create);
 		}
 
 		int cont = 50;
@@ -239,6 +241,7 @@ public class ClientDemo {
 				break;
 			}
 		}
+		depSpaceAdmin.close();
 	}
 }
 

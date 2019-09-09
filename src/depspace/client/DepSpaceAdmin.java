@@ -1,22 +1,28 @@
 package depspace.client;
 
+import confidential.client.ConfidentialServiceProxy;
+import depspace.general.DepSpaceException;
+import depspace.general.DepSpaceProperties;
+import vss.facade.SecretSharingException;
+
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
-
-import depspace.general.DepSpaceException;
-import depspace.general.DepSpaceProperties;
 
 
 public class DepSpaceAdmin {
 
 	private final Map<String, DepSpaceAccessor> accessors;
-	private final DepSpaceServiceProxy service;
+	private final ConfidentialServiceProxy service;
 
 
-	public DepSpaceAdmin(int clientID) {
-		this.accessors = new TreeMap<String, DepSpaceAccessor>();
-		this.service = new DepSpaceServiceProxy(clientID);
+	public DepSpaceAdmin(int clientID) throws DepSpaceException {
+		this.accessors = new TreeMap<>();
+		try {
+			this.service = new ConfidentialServiceProxy(clientID);
+		} catch (SecretSharingException e) {
+			throw new DepSpaceException("Failed to initialized confidential proxy", e);
+		}
 	}
 
 
@@ -43,7 +49,7 @@ public class DepSpaceAdmin {
 		// Create confidentiality layer
 		boolean useConfidentiality = DepSpaceProperties.getUseConfidentiality(properties);
 		if(useConfidentiality) {
-			System.err.println("TODO: Implement confidentiality layer");
+			//System.err.println("TODO: Implement confidentiality layer");
 //			ConfidentialityScheme scheme = null;
 //			try {
 //				PublicInfo publicInfo = new PublicInfo(config.getN(), config.getF() + 1,
@@ -82,4 +88,7 @@ public class DepSpaceAdmin {
 		accessor.getTupleSpace().deleteSpace(accessor.getTSName());
 	}
 
+	public void close() {
+		service.close();
+	}
 }

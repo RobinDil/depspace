@@ -1,13 +1,13 @@
 package depspace.general;
 
+import bftsmart.tom.MessageContext;
+import bftsmart.tom.core.messages.TOMMessageType;
+import depspace.confidentiality.ProtectionVector;
+
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Arrays;
-
-import bftsmart.tom.MessageContext;
-import bftsmart.tom.core.messages.TOMMessageType;
-import depspace.confidentiality.ProtectionVector;
 
 /**
  * Context. This class implements a Context for tuples.
@@ -113,11 +113,11 @@ public class Context {
 		this.invokerID = tomMessageContext.getSender();
 		this.consensusID = tomMessageContext.getConsensusId();
 		this.time = tomMessageContext.getTimestamp();
-		this.session = tomMessageContext.request.getSession();
-		this.sequence = tomMessageContext.request.getSequence();
-		this.operationID = tomMessageContext.request.getOperationId();
-		this.view = tomMessageContext.request.getViewID();
-		this.requestType = tomMessageContext.request.getReqType();
+		this.session = tomMessageContext.getSession();
+		this.sequence = tomMessageContext.getSequence();
+		this.operationID = tomMessageContext.getOperationId();
+		this.view = tomMessageContext.getViewID();
+		this.requestType = tomMessageContext.getType();
 	}
 	
 }

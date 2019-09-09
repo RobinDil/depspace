@@ -126,6 +126,16 @@ public class ReplaceTriggerLayer extends DepSpaceServerLayer {
 		upperLayer.clean(proof, ctx);
 	}
 
+	@Override
+	public void installSnapshot(TupleSpaceSnapshot state) {
+
+	}
+
+	@Override
+	public TupleSpaceSnapshot getSnapshot() {
+		return null;
+	}
+
 	// private DepTuple replaceDirAndChildrens(DepTuple template, DepTuple
 	// tuple, Context ctx) throws DepSpaceException{
 	// //TODO: generalizar para qualquer tipo de tuplos.

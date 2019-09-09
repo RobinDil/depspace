@@ -93,16 +93,16 @@ public class DepTuple implements Externalizable {
 	 *	 create methods for several kinds of tuples	  *
 	 **************************************************/
     
-    /*public static final DepTuple createTuple(Object... fields) {
-        return new DepTuple(fields,null,null,null);
+    public static final DepTuple createTuple(Object... fields) {
+        return new DepTuple(fields,null,null);
     }
     
     public static final DepTuple createAccessControledTuple(int[] c_rd,
             int[] c_in, Object... fields) {
-        return new DepTuple(fields, c_rd, c_in, null);
+        return new DepTuple(fields, c_rd, c_in);
     }
     
-    public static final DepTuple createAccessControledTimedTuple(int[] c_rd,
+    /*public static final DepTuple createAccessControledTimedTuple(int[] c_rd,
             int[] c_in, long expirationTime,Object... fields) {
         return new DepTuple(fields, c_rd, c_in, expirationTime);
     }
@@ -115,12 +115,12 @@ public class DepTuple implements Externalizable {
     public static final DepTuple internalCreateConfidentialTuple(
             int[] c_rd, int[] c_in, Object[] fields, PublishedShares publishedShares, Share share) {
         return new DepTuple(fields,c_rd,c_in,publishedShares,share);
-    }
+    }*/
     
     // TimedTuple
     public static final DepTuple createTimedTuple(long expirationTime, Object... fields) {
     	return new DepTuple(fields, null, null, expirationTime);
-    }*/
+    }
     
     
     /**************************************************
@@ -351,7 +351,9 @@ public class DepTuple implements Externalizable {
 			}
 			oos.writeObject(c_rd);
 			oos.writeObject(c_in);
-			share.writeExternal(oos);
+			oos.writeBoolean(share != null);
+			if (share != null)
+			    share.writeExternal(oos);
 			oos.writeLong(expirationTime);
 			oos.writeInt(n_matches);
 			oos.close();
@@ -406,11 +408,16 @@ public class DepTuple implements Externalizable {
 		}
     	this.c_rd = (int[]) ois.readObject();
     	this.c_in = (int[]) ois.readObject();
-    	this.share = new ConfidentialData();
-    	this.share.readExternal(ois);
+    	if (ois.readBoolean()) {
+            this.share = new ConfidentialData();
+            this.share.readExternal(ois);
+        }
     	this.expirationTime = ois.readLong();
     	this.n_matches = ois.readInt();
 		ois.close();
 	}
-	
+
+    public DepTuple getTupleWithoutShare() {
+        return new DepTuple(fields, c_rd, c_in, expirationTime, n_matches);
+    }
 }

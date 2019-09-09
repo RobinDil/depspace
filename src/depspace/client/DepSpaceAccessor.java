@@ -140,7 +140,7 @@ public class DepSpaceAccessor implements DepSpace {
 	}
 
 	public DepTuple cas(DepTuple template, DepTuple tuple) throws DepSpaceException {
-		return cas(template, tuple, createDefaultContext(DepSpaceOperation.CAS, template));
+		return cas(template, tuple, createDefaultContext(DepSpaceOperation.CAS, template, tuple));
 	}
 
 	public DepTuple replace(DepTuple template, DepTuple tuple) throws DepSpaceException {

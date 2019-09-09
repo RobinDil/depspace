@@ -5,8 +5,6 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.util.Properties;
 
-import pvss.PublicInfo;
-
 
 public class DepSpaceConfiguration {
 
@@ -82,11 +80,6 @@ public class DepSpaceConfiguration {
 		String fValue = config.getProperty("system.servers.f", "1");
 		f = (fValue != null) ? Integer.parseInt(fValue) : (int) Math.ceil((n - 1) / 3);
 
-	}
-
-
-	public static PublicInfo createPublicInfo() {
-		return new PublicInfo(n, f + 1, groupPrimeOrder, generatorg, generatorG);
 	}
 
 }

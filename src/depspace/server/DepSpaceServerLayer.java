@@ -23,4 +23,6 @@ public abstract class DepSpaceServerLayer implements DepSpace {
     public abstract Object signedRD(DepTuple template, Context ctx) throws DepSpaceException;
     public abstract void clean(DepTuple proof, Context ctx) throws DepSpaceException;
 
+    public abstract void installSnapshot(TupleSpaceSnapshot state);
+    public abstract TupleSpaceSnapshot getSnapshot();
 }
